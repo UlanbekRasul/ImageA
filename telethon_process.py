@@ -145,7 +145,7 @@ async def add_users_to_channel(
 
         # Проверяем лимиты
         account_stats = tracker.get_account_status(phone)
-        if account_stats['total_added'] >= 50:
+        if account_stats['total_added'] >= 100:
             break
 
     result.complete()
