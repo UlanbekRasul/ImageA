@@ -209,7 +209,7 @@ async def add_user_to_channel(account, source_channel, target_channel, chat_id):
         all_participants = await get_valid_participants(
             client,
             source_entity,
-            min(50, remaining_capacity)
+            min(100, remaining_capacity)
         )
 
         if not all_participants:
@@ -217,7 +217,7 @@ async def add_user_to_channel(account, source_channel, target_channel, chat_id):
             return 0
 
         total_added = 0
-        batches = [all_participants[i:i + 25] for i in range(0, len(all_participants), 25)]
+        batches = [all_participants[i:i + 50] for i in range(0, len(all_participants), 25)]
 
         for batch_num, batch in enumerate(batches, 1):
             addition_result = await add_users_to_channel(
@@ -446,6 +446,41 @@ async def get_channel_participants_data(channel_username, chat_id, account):
 
 
 async def monitor_command_file():
+    auto_resume_tasks = {}  # Хранение задач автовозобновления для каждого канала
+
+    async def schedule_auto_resume(source_channel, target_channel, chat_id):
+        while True:
+            await asyncio.sleep(12 * 3600)  # Ждем 12 часов
+
+            # Проверяем доступные аккаунты
+            available_accounts = []
+            for account in ACCOUNTS:
+                status = tracker.get_account_status(account['phone'])
+                if status['remaining_capacity'] > 0:
+                    available_accounts.append(account)
+
+            if available_accounts:
+                await send_result(chat_id, f"""
+🔄 Автоматическое возобновление добавления
+• Доступно аккаунтов: {len(available_accounts)}
+• Канал-источник: {source_channel}
+• Целевой канал: {target_channel}
+""")
+
+                # Создаем новую команду для добавления
+                command_data = {
+                    "command": "add_user_to_channel",
+                    "source_channel": source_channel,
+                    "target_channel": target_channel,
+                    "chat_id": chat_id,
+                    "accounts": [acc['phone'] for acc in available_accounts]
+                }
+
+                # Записываем команду в файл
+                with open(command_file, 'w') as f:
+                    json.dump(command_data, f)
+
+    # Основной цикл мониторинга
     while True:
         try:
             if os.path.exists(command_file) and os.path.getsize(command_file) > 0:
@@ -486,8 +521,26 @@ async def monitor_command_file():
 • {next_available['phone']}
 • {next_available['reason']}
 """)
+
+                        # Запускаем автовозобновление если его еще нет
+                        channel_key = f"{command_data['source_channel']}_{command_data['target_channel']}"
+                        if channel_key not in auto_resume_tasks:
+                            task = asyncio.create_task(schedule_auto_resume(
+                                command_data['source_channel'],
+                                command_data['target_channel'],
+                                command_data['chat_id']
+                            ))
+                            auto_resume_tasks[channel_key] = task
+
+                            await send_result(command_data['chat_id'], """
+✅ Автоматическое возобновление активировано
+• Система продолжит добавление через 12 часов
+• Будут использоваться все доступные аккаунты
+• Для остановки используйте команду /stop
+""")
                         continue
 
+                    # Работаем с доступными аккаунтами
                     await send_result(command_data['chat_id'], f"""
 🚀 Начинаем процесс инвайтинга
 • Доступно аккаунтов: {len(available_accounts)}/{len(accounts)}
@@ -495,7 +548,6 @@ async def monitor_command_file():
 • Целевой канал: {command_data['target_channel']}
 """)
 
-                    # Работаем с доступными аккаунтами
                     for i, account in enumerate(available_accounts):
                         try:
                             account_status = tracker.get_account_status(account['phone'])
@@ -521,20 +573,15 @@ async def monitor_command_file():
                                     'reason': "Не удалось добавить пользователей"
                                 })
 
-                            # Проверяем следующий аккаунт перед паузой
                             if i < len(available_accounts) - 1:
                                 next_account = available_accounts[i + 1]
                                 next_status = tracker.get_account_status(next_account['phone'])
-
-                                await send_result(
-                                    command_data['chat_id'],
-                                    f"""
+                                await send_result(command_data['chat_id'], f"""
 ⏳ Переключение аккаунта...
 📱 Следующий: {next_account['phone']}
 📊 Доступно добавлений: {next_status['remaining_capacity']}
 ⏰ Пауза {ACCOUNT_SETTINGS['delay_between_accounts']} секунд...
-"""
-                                )
+""")
                                 await asyncio.sleep(ACCOUNT_SETTINGS['delay_between_accounts'])
 
                         except Exception as e:
@@ -565,6 +612,26 @@ async def monitor_command_file():
 • Новый цикл через 12 часов после последнего использования каждого аккаунта
 """
                     await send_result(command_data['chat_id'], summary)
+
+                    # Запускаем автовозобновление после успешного добавления
+                    channel_key = f"{command_data['source_channel']}_{command_data['target_channel']}"
+                    if channel_key not in auto_resume_tasks:
+                        task = asyncio.create_task(schedule_auto_resume(
+                            command_data['source_channel'],
+                            command_data['target_channel'],
+                            command_data['chat_id']
+                        ))
+                        auto_resume_tasks[channel_key] = task
+
+                elif command_data.get('command') == "stop_auto_resume":
+                    channel_key = f"{command_data['source_channel']}_{command_data['target_channel']}"
+                    if channel_key in auto_resume_tasks:
+                        auto_resume_tasks[channel_key].cancel()
+                        del auto_resume_tasks[channel_key]
+                        await send_result(command_data['chat_id'], """
+⏹ Автоматическое возобновление остановлено
+• Для нового добавления используйте команду /add
+""")
 
                 elif command_data.get('command') == "get_channel_info":
                     await get_channel_info(
