@@ -166,7 +166,6 @@ def main():
     processes = start_processes()
     if not processes:
         return
-#h
 
     print("""
 ✅ Система запущена успешно

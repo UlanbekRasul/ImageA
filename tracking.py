@@ -68,9 +68,13 @@ class UserTracker:
         stats = self.account_stats[phone]
         current_time = datetime.datetime.now()
 
-        if not stats['next_available'] or current_time >= stats['next_available']:
-            time_remaining = datetime.timedelta(0)
-            status = "Available"
+        # Сброс счетчика если прошло 12 часов
+        if stats['last_used'] and (current_time - stats['last_used']).total_seconds() >= 12 * 3600:
+            stats['total_added'] = 0
+            stats['last_used'] = None
+            stats['next_available'] = None
+            self.save_stats()
+
         else:
             time_remaining = stats['next_available'] - current_time
             status = "Cooling down"

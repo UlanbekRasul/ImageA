@@ -158,6 +158,7 @@ def help_command(message):
 /add - Добавить пользователей в канал
 /get_channel_info - Получить информацию о канале
 /get_channel_participants_data - Получить данные об участниках
+/stop - остановка автоматического добавления
 /logout - Выйти из системы
 
 ⚠️ Важные ограничения:
@@ -174,6 +175,11 @@ def get_channel_info_command(message):
     msg = bot.reply_to(message, "📝 Введите username или ID канала для анализа (например, @example):")
     bot.register_next_step_handler(msg, process_channel_info)
 
+def cleanup_old_states():
+    current_time = datetime.datetime.now()
+    for chat_id in list(channel_states.keys()):
+        if current_time - channel_states[chat_id].get('last_activity', current_time) > datetime.timedelta(hours=1):
+            del channel_states[chat_id]
 
 @require_auth
 def process_channel_info(message):
@@ -241,6 +247,7 @@ def handle_auth(message):
 /add - Добавить пользователей в канал
 /get_channel_info - Получить информацию о канале
 /get_channel_participants_data - Получить данные об участниках
+/stop - остановка автоматического добавления
 /help - Показать все команды
 /logout - Выйти из системы
 """)
@@ -310,6 +317,30 @@ def add_command(message):
 🕒 Перерыв между аккаунтами: {ACCOUNT_SETTINGS['delay_between_accounts']} секунд
 """)
 
+
+@bot.message_handler(commands=['stop'])
+@require_auth
+def stop_command(message):
+    if message.chat.id in channel_states:
+        source_channel = channel_states[message.chat.id].get('source_channel')
+        target_channel = channel_states[message.chat.id].get('target_channel')
+
+        if source_channel and target_channel:
+            command_data = {
+                'command': 'stop_auto_resume',
+                'source_channel': source_channel,
+                'target_channel': target_channel,
+                'chat_id': message.chat.id
+            }
+
+            with open(command_file, 'w') as file:
+                json.dump(command_data, file)
+
+            bot.reply_to(message, "⏳ Остановка автоматического добавления...")
+        else:
+            bot.reply_to(message, "❌ Нет активного процесса добавления")
+    else:
+        bot.reply_to(message, "❌ Нет активного процесса добавления")
 
 @bot.message_handler(func=lambda message:
 message.chat.id in channel_states and
