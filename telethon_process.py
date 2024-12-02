@@ -1,15 +1,16 @@
 import os
 import json
 import asyncio
+import logging
 from telethon import TelegramClient, events
 from telethon.tl.functions.channels import GetFullChannelRequest, GetParticipantsRequest
 from telethon.tl.functions.channels import InviteToChannelRequest
 from telethon.tl.types import ChannelParticipantsSearch, User
 from telethon.errors import *
-from telethon.tl.functions.messages import ExportInviteRequest
+from telethon.tl.functions.messages import ExportChatInviteRequest
 import datetime
 import random
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, Optional
 from tracking import UserTracker
 from config import ACCOUNTS, PROXIES, ACCOUNT_SETTINGS
 
@@ -130,16 +131,13 @@ async def verify_user_added(client, channel, user) -> bool:
 async def send_invite_message(client, user, target_channel, invite_link):
     try:
         promo_text = f"""
-👋 Здравствуйте!
-Приглашаем вас присоединиться к нашему каналу {target_channel}
-
-🔥 У нас вы найдете:
-• Интересный и полезный контент
-• Эксклюзивные материалы
-• Активное комьюнити
-
-🔗 Присоединяйтесь по ссылке:
-{invite_link}
+Привет!
+Присоединяйтесь к нашему каналу для швейников Бишкека ✂️: {target_channel}
+Проверенные швейные цеха ✅
+Полезные советы и рекомендации 💡
+Тренды и новости 🧵
+Экономьте время и находите надежных партнеров с нами!
+👉 {'@impactsew_ru'}
 
 С уважением,
 Команда {target_channel}
@@ -203,14 +201,13 @@ async def add_users_to_channel(
 
     # Получаем пригласительную ссылку
     try:
-        invite_link = await client(ExportInviteRequest(
-            channel=target_entity,
-            legacy_revoke_permanent=True,
-            request_needed=False
-        ))
+        invite_link = await client(ExportChatInviteRequest(peer=target_entity))
         invite_url = invite_link.link
+    except FloodWaitError as e:
+        print(f"⏳ Flood wait: ждем {e.seconds} секунд")
+        await asyncio.sleep(e.seconds)
     except Exception as e:
-        print(f"❌ Ошибка получения ссылки-приглашения: {str(e)}")
+        print(f"❌ Ошибка создания ссылки-приглашения: {str(e)}")
         invite_url = None
 
     # Регистрируем обработчик событий
