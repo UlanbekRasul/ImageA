@@ -157,7 +157,7 @@ async def hybrid_verification(client, target_entity, result: AdditionResult):
         result.verification_data.final_count = final_channel.full_chat.participants_count
 
         # Получаем список финальных участников
-        final_participants = await client.get_participants(target_entity, limit=1000)
+        final_participants = await client.get_participants(target_entity, limit=10000)
         result.verification_data.final_members = set(user.id for user in final_participants)
 
         # Проверяем каждого пользователя индивидуально
@@ -172,7 +172,7 @@ async def hybrid_verification(client, target_entity, result: AdditionResult):
             'verified_count': len(verified_users),
             'total_difference': result.verification_data.count_difference,
             'new_members': len(result.verification_data.new_members),
-            'success_rate': (len(verified_users) / len(result.successful_users) * 100) if result.successful_users else 0
+            'success_rate': (len(verified_users) / len(result.successful_users) * 150) if result.successful_users else 0
         }
     except Exception as e:
         print(f"❌ Ошибка верификации: {str(e)}")
@@ -194,7 +194,7 @@ async def add_users_to_channel(
         initial_channel = await client(GetFullChannelRequest(target_entity))
         result.verification_data.initial_count = initial_channel.full_chat.participants_count
 
-        initial_participants = await client.get_participants(target_entity, limit=1000)
+        initial_participants = await client.get_participants(target_entity, limit=10000)
         result.verification_data.initial_members = set(user.id for user in initial_participants)
     except Exception as e:
         print(f"❌ Ошибка получения начального состояния: {str(e)}")
@@ -251,7 +251,7 @@ async def add_users_to_channel(
 
         # Проверяем лимиты
         account_stats = tracker.get_account_status(phone)
-        if account_stats['total_added'] >= 50:
+        if account_stats['total_added'] >= 100:
             break
 
     # Даем время на обработку событий
@@ -264,7 +264,7 @@ async def add_users_to_channel(
     return result
 
 
-async def get_valid_participants(client, channel, limit: int = 50) -> List[User]:
+async def get_valid_participants(client, channel, limit: int = 100) -> List[User]:
     participants = []
     offset = 0
 
@@ -274,7 +274,7 @@ async def get_valid_participants(client, channel, limit: int = 50) -> List[User]
                 channel,
                 ChannelParticipantsSearch(''),
                 offset,
-                limit=100,
+                limit=150,
                 hash=0
             ))
 
@@ -323,7 +323,7 @@ async def add_user_to_channel(account, source_channel, target_channel, chat_id):
         all_participants = await get_valid_participants(
             client,
             source_entity,
-            min(50, remaining_capacity)
+            min(100, remaining_capacity)
         )
 
         if not all_participants:
@@ -331,7 +331,7 @@ async def add_user_to_channel(account, source_channel, target_channel, chat_id):
             return 0
 
         total_added = 0
-        batches = [all_participants[i:i + 25] for i in range(0, len(all_participants), 25)]
+        batches = [all_participants[i:i + 50] for i in range(0, len(all_participants), 50)]
 
         for batch_num, batch in enumerate(batches, 1):
             addition_result = await add_users_to_channel(
